@@ -51,7 +51,7 @@ impl App {
 
 fn main() {
     let opengl_version = OpenGL::V3_2;
-    let initial_size = (800u32, 800u32);
+    let initial_size = (800, 800);
     let mut window: Window = WindowSettings::new("playground", initial_size)
         .graphics_api(opengl_version)
         .exit_on_esc(true)
@@ -60,7 +60,7 @@ fn main() {
 
     let mut app = App {
         gl: GlGraphics::new(opengl_version),
-        playground: Playground::new(initial_size),
+        playground: Playground::new((initial_size.0 as i32, initial_size.1 as i32)),
     };
 
     let obstacles = [
