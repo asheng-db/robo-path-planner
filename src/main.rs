@@ -21,26 +21,32 @@ impl App {
     fn render(&mut self, args: &RenderArgs) {
         // Import _everything_ for now because otherwise we get trait method errors.
         use graphics::*;
-
-        const BACKGROUND: [f32; 4] = color::WHITE;
-        const FOREGROUND: [f32; 4] = color::BLACK;
-
         self.gl.draw(args.viewport(), |c, gl| {
-            clear(BACKGROUND, gl);
+            clear(color::WHITE, gl);
 
             let scale = [
                 args.window_size[0] / (self.playground.size.0 as f64),
                 args.window_size[1] / (self.playground.size.1 as f64),
             ];
 
+            // Render obstacles
             for r in self.playground.get_obstacles() {
                 let [ax,ay] = math::mul([r.anchor.0 as f64, r.anchor.1 as f64], scale);
                 let [sx,sy] = math::mul([r.size.0 as f64, r.size.1 as f64], scale);
                 let r = rectangle::rectangle_by_corners(
                     ax, ay, ax+sx, ay+sy
                 );
-                rectangle(FOREGROUND, r, c.transform, gl);
+                rectangle(color::BLACK, r, c.transform, gl);
             }
+
+            // Render start/goal
+            let [sx,sy] = math::mul([self.playground.start.0 as f64, self.playground.start.1 as f64], scale);
+            let [gx,gy] = math::mul([self.playground.goal.0 as f64, self.playground.goal.1 as f64], scale);
+            let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
+            let start = ellipse::circle(sx, sy, r);
+            let goal = ellipse::circle(gx, gy, r);
+            ellipse(color::RED, start, c.transform, gl);
+            ellipse(color::RED, goal, c.transform, gl);
         });
     }
 
