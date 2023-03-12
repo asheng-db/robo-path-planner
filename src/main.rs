@@ -31,17 +31,24 @@ impl App {
 
             // Render obstacles
             for r in self.playground.get_obstacles() {
-                let [ax,ay] = math::mul([r.anchor.0 as f64, r.anchor.1 as f64], scale);
-                let [sx,sy] = math::mul([r.size.0 as f64, r.size.1 as f64], scale);
-                let r = rectangle::rectangle_by_corners(
-                    ax, ay, ax+sx, ay+sy
-                );
+                let [ax, ay] = math::mul([r.anchor.0 as f64, r.anchor.1 as f64], scale);
+                let [sx, sy] = math::mul([r.size.0 as f64, r.size.1 as f64], scale);
+                let r = rectangle::rectangle_by_corners(ax, ay, ax + sx, ay + sy);
                 rectangle(color::BLACK, r, c.transform, gl);
             }
 
             // Render start/goal
-            let [sx,sy] = math::mul([self.playground.start.0 as f64, self.playground.start.1 as f64], scale);
-            let [gx,gy] = math::mul([self.playground.goal.0 as f64, self.playground.goal.1 as f64], scale);
+            let [sx, sy] = math::mul(
+                [
+                    self.playground.start.0 as f64,
+                    self.playground.start.1 as f64,
+                ],
+                scale,
+            );
+            let [gx, gy] = math::mul(
+                [self.playground.goal.0 as f64, self.playground.goal.1 as f64],
+                scale,
+            );
             let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
             let start = ellipse::circle(sx, sy, r);
             let goal = ellipse::circle(gx, gy, r);
@@ -71,19 +78,46 @@ fn main() {
 
     let obstacles = [
         // vertical barrier 1
-        Rect { anchor: (200,  0), size: (100, 650) },
-        Rect { anchor: (200,750), size: (100, 100) },
+        Rect {
+            anchor: (200, 0),
+            size: (100, 650),
+        },
+        Rect {
+            anchor: (200, 750),
+            size: (100, 100),
+        },
         // vertical barrier 2
-        Rect { anchor: (500,   0), size: (50, 100) },
-        Rect { anchor: (500, 200), size: (50, 100) },
+        Rect {
+            anchor: (500, 0),
+            size: (50, 100),
+        },
+        Rect {
+            anchor: (500, 200),
+            size: (50, 100),
+        },
         // vertical barrier 3
-        Rect { anchor: (650,  50), size: (50, 200) },
+        Rect {
+            anchor: (650, 50),
+            size: (50, 200),
+        },
         // horizontal barrier 1
-        Rect { anchor: (300, 500), size: (350, 100) },
-        Rect { anchor: (750, 500), size: (300, 100) },
+        Rect {
+            anchor: (300, 500),
+            size: (350, 100),
+        },
+        Rect {
+            anchor: (750, 500),
+            size: (300, 100),
+        },
         // horizontal barrier 2
-        Rect { anchor: (300, 300), size: ( 50, 100) },
-        Rect { anchor: (450, 300), size: (400, 100) },
+        Rect {
+            anchor: (300, 300),
+            size: (50, 100),
+        },
+        Rect {
+            anchor: (450, 300),
+            size: (400, 100),
+        },
     ];
     for o in obstacles {
         app.playground.add_obstacles(o);
