@@ -1,3 +1,96 @@
+extern crate glutin_window;
+extern crate graphics;
+extern crate opengl_graphics;
+extern crate piston;
+
+use glutin_window::GlutinWindow as Window;
+use opengl_graphics::{GlGraphics, OpenGL};
+use piston::event_loop::{EventSettings, Events};
+use piston::input::{RenderArgs, RenderEvent, UpdateArgs, UpdateEvent};
+use piston::window::WindowSettings;
+
+pub mod playground;
+use playground::{Playground, Rect};
+
+pub struct App {
+    gl: GlGraphics, // OpenGL drawing backend.
+    playground: Playground,
+}
+
+impl App {
+    fn render(&mut self, args: &RenderArgs) {
+        // Import _everything_ for now because otherwise we get trait method errors.
+        use graphics::*;
+
+        const BACKGROUND: [f32; 4] = color::WHITE;
+        const FOREGROUND: [f32; 4] = color::BLACK;
+
+        self.gl.draw(args.viewport(), |c, gl| {
+            clear(BACKGROUND, gl);
+
+            let scale = [
+                args.window_size[0] / (self.playground.size.0 as f64),
+                args.window_size[1] / (self.playground.size.1 as f64),
+            ];
+
+            for r in self.playground.get_obstacles() {
+                let [ax,ay] = math::mul([r.anchor.0 as f64, r.anchor.1 as f64], scale);
+                let [sx,sy] = math::mul([r.size.0 as f64, r.size.1 as f64], scale);
+                let r = rectangle::rectangle_by_corners(
+                    ax, ay, ax+sx, ay+sy
+                );
+                rectangle(FOREGROUND, r, c.transform, gl);
+            }
+        });
+    }
+
+    fn update(&mut self, _args: &UpdateArgs) {
+        // TODO
+    }
+}
+
 fn main() {
-    println!("Hello, world!");
+    let opengl_version = OpenGL::V3_2;
+    let initial_size = (800u32, 800u32);
+    let mut window: Window = WindowSettings::new("playground", initial_size)
+        .graphics_api(opengl_version)
+        .exit_on_esc(true)
+        .build()
+        .unwrap();
+
+    let mut app = App {
+        gl: GlGraphics::new(opengl_version),
+        playground: Playground::new(initial_size),
+    };
+
+    let obstacles = [
+        // vertical barrier 1
+        Rect { anchor: (200,  0), size: (100, 650) },
+        Rect { anchor: (200,750), size: (100, 100) },
+        // vertical barrier 2
+        Rect { anchor: (500,   0), size: (50, 100) },
+        Rect { anchor: (500, 200), size: (50, 100) },
+        // vertical barrier 3
+        Rect { anchor: (650,  50), size: (50, 200) },
+        // horizontal barrier 1
+        Rect { anchor: (300, 500), size: (350, 100) },
+        Rect { anchor: (750, 500), size: (300, 100) },
+        // horizontal barrier 2
+        Rect { anchor: (300, 300), size: ( 50, 100) },
+        Rect { anchor: (450, 300), size: (400, 100) },
+    ];
+    for o in obstacles {
+        app.playground.add_obstacles(o);
+    }
+
+    let mut events = Events::new(EventSettings::new());
+    while let Some(e) = events.next(&mut window) {
+        if let Some(args) = e.render_args() {
+            app.render(&args);
+        }
+
+        if let Some(args) = e.update_args() {
+            app.update(&args);
+        }
+    }
 }
