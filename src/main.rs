@@ -19,6 +19,8 @@ pub struct App {
     gl: GlGraphics, // OpenGL drawing backend.
     playground: Playground,
     actor: Actor,
+    pub start: (i32, i32),
+    pub goal: (i32, i32),
 }
 
 impl App {
@@ -45,13 +47,13 @@ impl App {
             {
                 let [sx, sy] = math::mul(
                     [
-                        self.playground.start.0 as f64,
-                        self.playground.start.1 as f64,
+                        self.start.0 as f64,
+                        self.start.1 as f64,
                     ],
                     scale,
                 );
                 let [gx, gy] = math::mul(
-                    [self.playground.goal.0 as f64, self.playground.goal.1 as f64],
+                    [self.goal.0 as f64, self.goal.1 as f64],
                     scale,
                 );
                 let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
@@ -92,11 +94,15 @@ fn main() {
         .unwrap();
 
     let playground = Playground::new((initial_size.0 as i32, initial_size.1 as i32));
-    let actor = Actor::new(playground.start);
+    let start = (50, 50);
+    let goal = (50, 50);
+    let actor = Actor::new(start);
     let mut app = App {
         gl: GlGraphics::new(opengl_version),
         playground,
         actor,
+        start,
+        goal,
     };
 
     let obstacles = [

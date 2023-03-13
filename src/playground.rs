@@ -13,8 +13,6 @@ pub struct Playground {
     pub size: (i32, i32), // (x,y) bounds. 0,0 is the top-left corner.
     obstacles: Quadtree<i32, u32>,
     obstacle_counter: u32, // TODO: Find a use for the obstacle IDs
-    pub start: (i32, i32),
-    pub goal: (i32, i32),
 }
 
 impl Playground {
@@ -23,8 +21,6 @@ impl Playground {
             obstacles: Quadtree::new(16),
             obstacle_counter: 0,
             size: size,
-            start: (size.0 / 16, size.1 / 16),
-            goal: (15 * size.0 / 16, size.1 / 16),
         };
     }
 
