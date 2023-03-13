@@ -1,4 +1,6 @@
-use std::collections::{BinaryHeap, HashMap};
+use rand::Rng;
+use std::cmp;
+use std::collections::HashMap;
 
 use crate::playground::{Playground, Rect};
 
@@ -14,112 +16,130 @@ pub struct Pose {
 
 pub struct Actor {
     // Pose: (x,y) in playground frame; theta in degrees
-    pub pose: Pose,
+    pose: Pose,
     pub size: (i32, i32),
 }
 
 impl Actor {
-    const DRIVE_STEP: f64 = 5.0;
-    const TURN_STEP: i32 = 3;
-
-    pub fn new(position: (i32, i32)) -> Self {
+    pub fn new(playground: &Playground) -> Self {
         return Self {
             pose: Pose {
-                x: position.0,
-                y: position.1,
+                x: playground.start.0,
+                y: playground.start.1,
                 t: 0,
             },
-            size: (13, 21),
+            size: (15, 30),
         };
     }
 
-    // A-star from start to goal, with each playground pixel as a grid tile.
-    fn path_to_goal(&self, playground: &Playground, start: Pose, goal: Pose) -> Vec<Pose> {
-        const THRESHOLD: f64 = Actor::DRIVE_STEP;
-
-        // heap is (estimated_cost, true_cost, vertex, parent)
-        let mut frontier: BinaryHeap<(i32, i32, Pose, Pose)> = BinaryHeap::new();
-        let mut visited_to_parent: HashMap<Pose, Pose> = HashMap::new();
-
-        frontier.push((0, 0, start, start));
-        while frontier.len() > 0 {
-            match frontier.pop() {
-                Some((_, cost, curr, prev)) => {
-                    if visited_to_parent.contains_key(&curr) {
-                        continue;
-                    }
-                    visited_to_parent.insert(curr, prev);
-
-                    if Self::euclid_dist(&curr, &goal) < THRESHOLD {
-                        let mut acc: Vec<Pose> = Vec::new();
-                        let mut x = curr;
-                        while x != visited_to_parent[&x] {
-                            acc.push(x);
-                            x = visited_to_parent[&x];
-                        }
-                        acc.push(start);
-                        acc.reverse();
-                        return acc;
-                    }
-                    for n in Self::pose_neighbors(&curr) {
-                        if !self.is_valid_pose(&n, playground) || visited_to_parent.contains_key(&n)
-                        {
-                            continue;
-                        }
-                        let true_cost = cost + 1;
-                        let estimate = Self::euclid_dist(&n, &goal) as i32;
-                        // Multiply by -1 since Rust's heap is a max heap
-                        frontier.push((-1 * (true_cost + estimate), true_cost, n, curr));
-                    }
-                }
-                None => panic!("No path found!"),
+    pub fn compact_path(&self, playground: &Playground, path: &Vec<Pose>) -> Vec<Pose> {
+        let mut acc: Vec<Pose> = Vec::new();
+        acc.push(path[0]);
+        for i in 2..path.len() {
+            if !self.is_valid_path(playground, acc.last().unwrap(), &path[i]) {
+                acc.push(path[i - 1]);
             }
         }
-        return vec![];
+        acc.push(path.last().unwrap().clone());
+        return acc;
+    }
+
+    // Rapid Random Tree pathfinder
+    pub fn rrt_to_goal(&self, playground: &Playground) -> Vec<Pose> {
+        const GOAL_SELECT: f64 = 0.01;
+        let mut rng = rand::thread_rng();
+
+        let start = Pose {
+            x: playground.start.0,
+            y: playground.start.1,
+            t: 0,
+        };
+        let goal = Pose {
+            x: playground.goal.0,
+            y: playground.goal.1,
+            t: 0,
+        };
+
+        let mut visited_to_parent: HashMap<Pose, Pose> = HashMap::new();
+        visited_to_parent.insert(start, start);
+        loop {
+            let rpose = match rng.gen_bool(GOAL_SELECT) {
+                true => goal,
+                false => Pose {
+                    x: rng.gen_range(0..playground.size.0 / 10) * 10,
+                    y: rng.gen_range(0..playground.size.1 / 10) * 10,
+                    t: rng.gen_range(0..36) * 10,
+                },
+            };
+            if visited_to_parent.contains_key(&rpose) || !self.is_valid_pose(playground, &rpose) {
+                continue;
+            }
+
+            let mut nearest: Option<Pose> = None;
+            let mut nearest_dist = (playground.size.0 + playground.size.1) as f64;
+            for c in visited_to_parent.keys() {
+                let dist = Self::euclid_dist(&rpose, &c);
+                if dist >= nearest_dist || !self.is_valid_path(playground, &rpose, &c) {
+                    continue;
+                }
+
+                nearest = Some(c.clone());
+                nearest_dist = dist;
+            }
+
+            match nearest {
+                None => continue,
+                Some(n) => {
+                    visited_to_parent.insert(rpose, n);
+                    if rpose == goal {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut ret = Vec::new();
+        let mut x = goal;
+        while x != visited_to_parent[&x] {
+            ret.push(x);
+            x = visited_to_parent[&x];
+        }
+        ret.push(x);
+        ret.reverse();
+        // print!("{:?}\n", ret);
+        return ret;
     }
 
     fn euclid_dist(from: &Pose, to: &Pose) -> f64 {
         let dx = (from.x - to.x) as f64;
         let dy = (from.y - to.y) as f64;
-        let dt = ((from.t - to.t) / Actor::TURN_STEP) as f64;
-        return (dx.powf(2.0) + dy.powf(2.0) + dt.powf(2.0)).sqrt();
+        return (dx.powf(2.0) + dy.powf(2.0)).sqrt();
     }
 
-    // TODO: Consider making this do Ackermann steering (like a car)
-    fn pose_neighbors(pose: &Pose) -> Vec<Pose> {
-        let mut neighbors: Vec<Pose> = Vec::new();
-        {
-            let t = (pose.t as f64).to_radians();
-            let dx = Actor::DRIVE_STEP * t.sin();
-            let dy = Actor::DRIVE_STEP * t.cos();
-            let dt = Actor::TURN_STEP;
-            // forward
-            neighbors.push(Pose {
-                x: pose.x + (dx as i32),
-                y: pose.y + (dy as i32),
-                ..*pose
-            });
-            // backward
-            neighbors.push(Pose {
-                x: pose.x - (dx as i32),
-                y: pose.y - (dy as i32),
-                ..*pose
-            });
-            // right
-            neighbors.push(Pose {
-                t: (pose.t + dt) % 360,
-                ..*pose
-            });
-            // left
-            neighbors.push(Pose {
-                t: (pose.t - dt) % 360,
-                ..*pose
-            });
-        }
-        return neighbors;
+    fn is_valid_path(&self, playground: &Playground, f: &Pose, t: &Pose) -> bool {
+        let ft = (f.t as f64).to_radians();
+        let tt = (t.t as f64).to_radians();
+
+        let xs = cmp::max(
+            (((self.size.0 as f64) * ft.cos()).abs() + ((self.size.1 as f64) * ft.sin()).abs())
+                as i32,
+            (((self.size.0 as f64) * tt.cos()).abs() + ((self.size.1 as f64) * tt.sin()).abs())
+                as i32,
+        );
+        let ys = cmp::max(
+            (((self.size.0 as f64) * ft.sin()).abs() + ((self.size.1 as f64) * ft.cos()).abs())
+                as i32,
+            (((self.size.0 as f64) * tt.sin()).abs() + ((self.size.1 as f64) * tt.cos()).abs())
+                as i32,
+        );
+        let rect = Rect {
+            anchor: (cmp::min(f.x, t.x) - xs / 2, cmp::min(f.y, t.y) - ys / 2),
+            size: ((f.x - t.x).abs() + xs, (f.y - t.y).abs() + ys),
+        };
+        return !playground.is_collision(&rect);
     }
 
-    fn is_valid_pose(&self, pose: &Pose, playground: &Playground) -> bool {
+    fn is_valid_pose(&self, playground: &Playground, pose: &Pose) -> bool {
         let mut hitboxes: Vec<Rect> = Vec::new();
 
         // TODO: Generate a set of hitboxes conforming to the shape rather than a giant rectangle.
@@ -148,19 +168,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn path_to_goal() {
-        let playground = Playground::new((800, 800));
-        let start = Pose { x: 50, y: 50, t: 0 };
-        let goal = Pose {
-            x: 750,
-            y: 750,
-            t: 0,
-        };
-        let actor = Actor::new((start.x, start.y));
+    fn compact_path() {
+        let playground = Playground::new((800, 800), (50, 50), (750, 750));
+        let actor = Actor::new(&playground);
+        let path = actor.rrt_to_goal(&playground);
+        let path = actor.compact_path(&playground, &path);
+        assert_eq!(path.len(), 2);
+    }
 
-        let path = actor.path_to_goal(&playground, start, goal);
+    #[test]
+    fn rrt_to_goal() {
+        let playground = Playground::new((800, 800), (50, 50), (750, 750));
+        let actor = Actor::new(&playground);
+        let path = actor.rrt_to_goal(&playground);
         assert_ne!(path.len(), 0);
-        assert!(path.len() > (Actor::euclid_dist(&start, &goal) / Actor::DRIVE_STEP) as usize);
+    }
+
+    #[test]
+    fn rrt_to_goal_obstacle() {
+        let mut playground = Playground::new((800, 800), (50, 50), (750, 750));
+        playground.add_obstacles(Rect {
+            anchor: (100, 100),
+            size: (600, 600),
+        });
+        let actor = Actor::new(&playground);
+        let path = actor.rrt_to_goal(&playground);
+        assert_ne!(path.len(), 0);
     }
 
     #[test]
@@ -198,49 +231,53 @@ mod tests {
                     y: 51,
                     t: 180
                 }
-            ) > 10.0
+            ) < 10.0
         );
     }
 
     #[test]
-    fn pose_neighbors() {
-        let neighbors = Actor::pose_neighbors(&Pose { x: 12, y: 12, t: 0 });
-        assert_eq!(neighbors.len(), 4);
-        assert_eq!(neighbors[0], Pose { x: 12, y: 17, t: 0 });
-        assert_eq!(neighbors[1], Pose { x: 12, y: 7, t: 0 });
-        assert_eq!(neighbors[2], Pose { x: 12, y: 12, t: 3 });
-        assert_eq!(
-            neighbors[3],
-            Pose {
-                x: 12,
-                y: 12,
-                t: -3,
-            }
-        );
-    }
-
-    #[test]
-    fn pose_neighbors_overflow() {
-        let neighbors = Actor::pose_neighbors(&Pose {
-            x: 12,
-            y: 12,
-            t: 359,
+    fn is_valid_path() {
+        let mut playground = Playground::new((500, 500), (0, 0), (0, 0));
+        playground.add_obstacles(Rect {
+            anchor: (100, 100),
+            size: (300, 300),
         });
-        assert_eq!(neighbors.len(), 4);
-        assert_eq!(neighbors[2], Pose { x: 12, y: 12, t: 2 });
-        assert_eq!(
-            neighbors[3],
-            Pose {
-                x: 12,
-                y: 12,
-                t: 356,
+
+        let actor = Actor {
+            pose: Pose { x: 0, y: 0, t: 0 },
+            size: (40, 40),
+        };
+        assert!(actor.is_valid_path(
+            &playground,
+            &Pose {
+                x: 50,
+                y: 50,
+                t: 90
+            },
+            &Pose {
+                x: 450,
+                y: 50,
+                t: 90
             }
-        );
+        ));
+        assert!(!actor.is_valid_path(
+            &playground,
+            &Pose {
+                x: 50,
+                y: 50,
+                t: 90
+            },
+            &Pose {
+                x: 450,
+                y: 450,
+                t: 90
+            }
+        ));
     }
 
     #[test]
     fn is_valid_pose() {
-        let mut playground = Playground::new((500, 500));
+        let mut playground = Playground::new((500, 500), (0, 0), (0, 0));
         playground.add_obstacles(Rect {
             anchor: (100, 100),
             size: (300, 300),
@@ -252,46 +289,46 @@ mod tests {
         };
 
         assert!(actor.is_valid_pose(
+            &playground,
             &Pose {
                 x: 50,
                 y: 250,
                 t: 0
             },
-            &playground
         ));
         assert!(!actor.is_valid_pose(
+            &playground,
             &Pose {
                 x: 50,
                 y: 250,
                 t: 90
             },
-            &playground
         ));
 
         assert!(!actor.is_valid_pose(
+            &playground,
             &Pose {
                 x: 250,
                 y: 50,
                 t: 0
             },
-            &playground
         ));
         assert!(actor.is_valid_pose(
+            &playground,
             &Pose {
                 x: 250,
                 y: 50,
                 t: 90
             },
-            &playground
         ));
 
         assert!(!actor.is_valid_pose(
+            &playground,
             &Pose {
                 x: 250,
                 y: 250,
                 t: 0
             },
-            &playground
         ));
     }
 }

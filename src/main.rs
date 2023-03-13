@@ -19,8 +19,6 @@ pub struct App {
     gl: GlGraphics, // OpenGL drawing backend.
     playground: Playground,
     actor: Actor,
-    pub start: (i32, i32),
-    pub goal: (i32, i32),
 }
 
 impl App {
@@ -44,37 +42,38 @@ impl App {
             }
 
             // Render start/goal
-            {
-                let [sx, sy] = math::mul(
-                    [
-                        self.start.0 as f64,
-                        self.start.1 as f64,
-                    ],
-                    scale,
-                );
-                let [gx, gy] = math::mul(
-                    [self.goal.0 as f64, self.goal.1 as f64],
-                    scale,
-                );
-                let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
-                let start = ellipse::circle(sx, sy, r);
-                let goal = ellipse::circle(gx, gy, r);
-                ellipse(color::RED, start, c.transform, gl);
-                ellipse(color::RED, goal, c.transform, gl);
-            }
+            let [sx, sy] = math::mul(
+                [
+                    self.playground.start.0 as f64,
+                    self.playground.start.1 as f64,
+                ],
+                scale,
+            );
+            let [gx, gy] = math::mul(
+                [self.playground.goal.0 as f64, self.playground.goal.1 as f64],
+                scale,
+            );
+            let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
+            let start = ellipse::circle(sx, sy, r);
+            let goal = ellipse::circle(gx, gy, r);
+            ellipse(color::RED, start, c.transform, gl);
+            ellipse(color::RED, goal, c.transform, gl);
 
-            // Render actor
-            {
-                let [acx, acy] =
-                    math::mul([self.actor.pose.x as f64, self.actor.pose.y as f64], scale);
-                let [asx, asy] =
-                    math::mul([self.actor.size.0 as f64, self.actor.size.1 as f64], scale);
-                let transform = c
-                    .transform
-                    .trans(acx, acy)
-                    .rot_deg(self.actor.pose.t as f64);
-                let actor = rectangle::centered([0.0, 0.0, asx / 2.0, asy / 2.0]);
-                rectangle(color::BLUE, actor, transform, gl);
+            // Render path
+            let mut lp = [sx, sy];
+            let path = self.actor.rrt_to_goal(&self.playground);
+            let path = self.actor.compact_path(&self.playground, &path);
+            for next_pose in path {
+                let np = math::mul([next_pose.x as f64, next_pose.y as f64], scale);
+                line_from_to(
+                    color::BLUE,
+                    1.0,
+                    [lp[0], lp[1]],
+                    [np[0], np[1]],
+                    c.transform,
+                    gl,
+                );
+                lp = np;
             }
         });
     }
@@ -93,16 +92,14 @@ fn main() {
         .build()
         .unwrap();
 
-    let playground = Playground::new((initial_size.0 as i32, initial_size.1 as i32));
     let start = (50, 50);
-    let goal = (50, 50);
-    let actor = Actor::new(start);
+    let goal = (750, 50);
+    let playground = Playground::new((initial_size.0 as i32, initial_size.1 as i32), start, goal);
+    let actor = Actor::new(&playground);
     let mut app = App {
         gl: GlGraphics::new(opengl_version),
         playground,
         actor,
-        start,
-        goal,
     };
 
     let obstacles = [

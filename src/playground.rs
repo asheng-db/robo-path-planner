@@ -13,14 +13,18 @@ pub struct Playground {
     pub size: (i32, i32), // (x,y) bounds. 0,0 is the top-left corner.
     obstacles: Quadtree<i32, u32>,
     obstacle_counter: u32, // TODO: Find a use for the obstacle IDs
+    pub start: (i32, i32),
+    pub goal: (i32, i32),
 }
 
 impl Playground {
-    pub fn new(size: (i32, i32)) -> Self {
+    pub fn new(size: (i32, i32), start: (i32, i32), goal: (i32, i32)) -> Self {
         return Self {
             obstacles: Quadtree::new(16),
             obstacle_counter: 0,
-            size: size,
+            size,
+            start,
+            goal,
         };
     }
 
@@ -81,7 +85,7 @@ mod tests {
 
     #[test]
     fn add_obstacle() {
-        let mut p = Playground::new((500, 500));
+        let mut p = Playground::new((500, 500), (0, 0), (0, 0));
         let anchor = (0, 0);
         let size = (123, 456);
         p.add_obstacles(Rect { anchor, size });
@@ -94,7 +98,7 @@ mod tests {
 
     #[test]
     fn add_obstacle_exceeding_bounds() {
-        let mut p = Playground::new((500, 500));
+        let mut p = Playground::new((500, 500), (0, 0), (0, 0));
         let anchor = (0, 0);
         let size = (1024, 1024);
         p.add_obstacles(Rect { anchor, size });
@@ -107,7 +111,7 @@ mod tests {
 
     #[test]
     fn is_collision() {
-        let mut p = Playground::new((500, 500));
+        let mut p = Playground::new((500, 500), (0, 0), (0, 0));
         p.add_obstacles(Rect {
             anchor: (100, 100),
             size: (300, 300),
