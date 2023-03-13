@@ -1033,6 +1033,7 @@ dependencies = [
  "pistoncore-glutin_window",
  "quadtree_rs",
  "rand",
+ "splines",
 ]
 
 [[package]]
@@ -1473,6 +1474,12 @@ dependencies = [
  "once_cell",
  "winapi",
 ]
+
+[[package]]
+name = "splines"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "345f11dca845086e60f1076569dedb4c2026e8dfe420d2900de8683142480bcf"
 
 [[package]]
 name = "strict-num"

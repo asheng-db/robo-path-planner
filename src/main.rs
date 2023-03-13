@@ -12,13 +12,14 @@ use piston::window::WindowSettings;
 pub mod playground;
 use playground::{Playground, Rect};
 
-pub mod actor;
-use actor::Actor;
+pub mod planner;
+use planner::Planner;
 
 pub struct App {
     gl: GlGraphics, // OpenGL drawing backend.
     playground: Playground,
-    actor: Actor,
+    planner: Planner,
+    t: f64,
 }
 
 impl App {
@@ -61,12 +62,10 @@ impl App {
 
             // Render path
             let mut lp = [sx, sy];
-            let path = self.actor.rrt_to_goal(&self.playground);
-            let path = self.actor.compact_path(&self.playground, &path);
-            for next_pose in path {
+            for next_pose in &self.planner.path {
                 let np = math::mul([next_pose.x as f64, next_pose.y as f64], scale);
                 line_from_to(
-                    color::BLUE,
+                    color::GREEN,
                     1.0,
                     [lp[0], lp[1]],
                     [np[0], np[1]],
@@ -75,11 +74,28 @@ impl App {
                 );
                 lp = np;
             }
+
+            // Render actor
+            let [acx, acy] = math::mul(
+                [self.planner.pose.x as f64, self.planner.pose.y as f64],
+                scale,
+            );
+            let [asx, asy] = math::mul(
+                [self.planner.size.0 as f64, self.planner.size.1 as f64],
+                scale,
+            );
+            let transform = c
+                .transform
+                .trans(acx, acy)
+                .rot_deg(self.planner.pose.t as f64);
+            let r = rectangle::rectangle_by_corners(asx / -2.0, asy / -2.0, asx, asy);
+            rectangle(color::BLUE, r, transform, gl);
         });
     }
 
-    fn update(&mut self, _args: &UpdateArgs) {
-        // TODO
+    fn update(&mut self, args: &UpdateArgs) {
+        self.t += args.dt;
+        self.planner.update_pos(self.t);
     }
 }
 
@@ -95,11 +111,12 @@ fn main() {
     let start = (50, 50);
     let goal = (750, 50);
     let playground = Playground::new((initial_size.0 as i32, initial_size.1 as i32), start, goal);
-    let actor = Actor::new(&playground);
+    let planner = Planner::new(&playground);
     let mut app = App {
         gl: GlGraphics::new(opengl_version),
         playground,
-        actor,
+        planner,
+        t: 0.0,
     };
 
     let obstacles = [
@@ -148,6 +165,8 @@ fn main() {
     for o in obstacles {
         app.playground.add_obstacles(o);
     }
+
+    app.planner.compute_path(&app.playground);
 
     let mut events = Events::new(EventSettings::new());
     while let Some(e) = events.next(&mut window) {

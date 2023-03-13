@@ -1,6 +1,8 @@
+extern crate splines;
+
 use rand::Rng;
-use std::cmp;
-use std::collections::HashMap;
+use splines::{Interpolation, Key, Spline};
+use std::{cmp, collections::HashMap};
 
 use crate::playground::{Playground, Rect};
 
@@ -14,13 +16,14 @@ pub struct Pose {
     pub t: i32, // degrees
 }
 
-pub struct Actor {
-    // Pose: (x,y) in playground frame; theta in degrees
-    pose: Pose,
+pub struct Planner {
+    pub pose: Pose,
     pub size: (i32, i32),
+    pub path: Vec<Pose>,
+    splines: Option<(Spline<f64, f64>, Spline<f64, f64>, Spline<f64, f64>)>,
 }
 
-impl Actor {
+impl Planner {
     pub fn new(playground: &Playground) -> Self {
         return Self {
             pose: Pose {
@@ -29,10 +32,60 @@ impl Actor {
                 t: 0,
             },
             size: (15, 30),
+            path: vec![],
+            splines: None,
         };
     }
 
-    pub fn compact_path(&self, playground: &Playground, path: &Vec<Pose>) -> Vec<Pose> {
+    pub fn compute_path(&mut self, playground: &Playground) {
+        if self.splines.is_none() {
+            let path = self.rrt_to_goal(playground);
+            let path = self.compact_path(playground, &path);
+            self.splines = Some(Self::build_spline(&path));
+            self.path = path;
+        }
+    }
+
+    pub fn update_pos(&mut self, t: f64) {
+        const PIXELS_PER_SEC: f64 = 24.0;
+        let t = t * PIXELS_PER_SEC;
+        match &self.splines {
+            None => (),
+            Some((sx, sy, st)) => {
+                self.pose = Pose {
+                    x: sx.clamped_sample(t).unwrap() as i32,
+                    y: sy.clamped_sample(t).unwrap() as i32,
+                    t: st.clamped_sample(t).unwrap() as i32,
+                }
+            }
+        };
+    }
+
+    fn build_spline(path: &Vec<Pose>) -> (Spline<f64, f64>, Spline<f64, f64>, Spline<f64, f64>) {
+        let mut last: Option<Pose> = None;
+        let mut dist = 0.0;
+        let mut keys = (Vec::new(), Vec::new(), Vec::new());
+        for pose in path {
+            match last {
+                None => (),
+                Some(prev) => dist += Self::euclid_dist(&prev, pose),
+            }
+            last = Some(pose.clone());
+            keys.0
+                .push(Key::new(dist, pose.x as f64, Interpolation::Linear));
+            keys.1
+                .push(Key::new(dist, pose.y as f64, Interpolation::Linear));
+            keys.2
+                .push(Key::new(dist, pose.t as f64, Interpolation::Linear));
+        }
+        return (
+            Spline::from_vec(keys.0),
+            Spline::from_vec(keys.1),
+            Spline::from_vec(keys.2),
+        );
+    }
+
+    fn compact_path(&self, playground: &Playground, path: &Vec<Pose>) -> Vec<Pose> {
         let mut acc: Vec<Pose> = Vec::new();
         acc.push(path[0]);
         for i in 2..path.len() {
@@ -45,7 +98,8 @@ impl Actor {
     }
 
     // Rapid Random Tree pathfinder
-    pub fn rrt_to_goal(&self, playground: &Playground) -> Vec<Pose> {
+    fn rrt_to_goal(&self, playground: &Playground) -> Vec<Pose> {
+        const GRID_SIZE: i32 = 10;
         const GOAL_SELECT: f64 = 0.01;
         let mut rng = rand::thread_rng();
 
@@ -66,9 +120,9 @@ impl Actor {
             let rpose = match rng.gen_bool(GOAL_SELECT) {
                 true => goal,
                 false => Pose {
-                    x: rng.gen_range(0..playground.size.0 / 10) * 10,
-                    y: rng.gen_range(0..playground.size.1 / 10) * 10,
-                    t: rng.gen_range(0..36) * 10,
+                    x: rng.gen_range(0..playground.size.0 / GRID_SIZE) * GRID_SIZE,
+                    y: rng.gen_range(0..playground.size.1 / GRID_SIZE) * GRID_SIZE,
+                    t: rng.gen_range(0..36) * GRID_SIZE,
                 },
             };
             if visited_to_parent.contains_key(&rpose) || !self.is_valid_pose(playground, &rpose) {
@@ -168,9 +222,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn build_spline() {
+        let path = vec![
+            Pose { x: 0, y: 0, t: 0 },
+            Pose {
+                x: 100,
+                y: 0,
+                t: 128,
+            },
+        ];
+        let splines = Planner::build_spline(&path);
+        assert_eq!(splines.0.clamped_sample(0.0), Some(0.0));
+        assert_eq!(splines.1.clamped_sample(0.0), Some(0.0));
+        assert_eq!(splines.2.clamped_sample(0.0), Some(0.0));
+
+        assert_eq!(splines.0.clamped_sample(50.0), Some(50.0));
+        assert_eq!(splines.1.clamped_sample(50.0), Some(0.0));
+        assert_eq!(splines.2.clamped_sample(50.0), Some(64.0));
+
+        assert_eq!(splines.0.clamped_sample(100.0), Some(100.0));
+        assert_eq!(splines.1.clamped_sample(100.0), Some(0.0));
+        assert_eq!(splines.2.clamped_sample(100.0), Some(128.0));
+    }
+
+    #[test]
     fn compact_path() {
         let playground = Playground::new((800, 800), (50, 50), (750, 750));
-        let actor = Actor::new(&playground);
+        let actor = Planner::new(&playground);
         let path = actor.rrt_to_goal(&playground);
         let path = actor.compact_path(&playground, &path);
         assert_eq!(path.len(), 2);
@@ -179,7 +257,7 @@ mod tests {
     #[test]
     fn rrt_to_goal() {
         let playground = Playground::new((800, 800), (50, 50), (750, 750));
-        let actor = Actor::new(&playground);
+        let actor = Planner::new(&playground);
         let path = actor.rrt_to_goal(&playground);
         assert_ne!(path.len(), 0);
     }
@@ -191,7 +269,7 @@ mod tests {
             anchor: (100, 100),
             size: (600, 600),
         });
-        let actor = Actor::new(&playground);
+        let actor = Planner::new(&playground);
         let path = actor.rrt_to_goal(&playground);
         assert_ne!(path.len(), 0);
     }
@@ -204,7 +282,7 @@ mod tests {
             t: 0,
         };
         assert!(
-            Actor::euclid_dist(
+            Planner::euclid_dist(
                 &target,
                 &Pose {
                     x: 751,
@@ -214,7 +292,7 @@ mod tests {
             ) < 10.0
         );
         assert!(
-            Actor::euclid_dist(
+            Planner::euclid_dist(
                 &target,
                 &Pose {
                     x: 751,
@@ -224,7 +302,7 @@ mod tests {
             ) > 10.0
         );
         assert!(
-            Actor::euclid_dist(
+            Planner::euclid_dist(
                 &target,
                 &Pose {
                     x: 751,
@@ -243,9 +321,11 @@ mod tests {
             size: (300, 300),
         });
 
-        let actor = Actor {
+        let actor = Planner {
             pose: Pose { x: 0, y: 0, t: 0 },
             size: (40, 40),
+            path: vec![],
+            splines: None,
         };
         assert!(actor.is_valid_path(
             &playground,
@@ -283,9 +363,11 @@ mod tests {
             size: (300, 300),
         });
         // Vertical line
-        let actor = Actor {
+        let actor = Planner {
             pose: Pose { x: 0, y: 0, t: 0 },
             size: (1, 128),
+            path: vec![],
+            splines: None,
         };
 
         assert!(actor.is_valid_pose(
