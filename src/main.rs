@@ -42,7 +42,7 @@ impl App {
                 rectangle(color::BLACK, r, c.transform, gl);
             }
 
-            // Render start/goal
+            // Render path
             let [sx, sy] = math::mul(
                 [
                     self.playground.start.0 as f64,
@@ -54,26 +54,43 @@ impl App {
                 [self.playground.goal.0 as f64, self.playground.goal.1 as f64],
                 scale,
             );
+            {
+                let mut lp = [sx, sy];
+                for next_pose in &self.planner.full_path {
+                    let np = math::mul([next_pose.x as f64, next_pose.y as f64], scale);
+                    line_from_to(
+                        color::GREEN,
+                        1.0,
+                        [lp[0], lp[1]],
+                        [np[0], np[1]],
+                        c.transform,
+                        gl,
+                    );
+                    lp = np;
+                }
+            }
+            {
+                let mut lp = [sx, sy];
+                for next_pose in &self.planner.compact_path {
+                    let np = math::mul([next_pose.x as f64, next_pose.y as f64], scale);
+                    line_from_to(
+                        color::RED,
+                        1.0,
+                        [lp[0], lp[1]],
+                        [np[0], np[1]],
+                        c.transform,
+                        gl,
+                    );
+                    lp = np;
+                }
+            }
+
+            // Render start/goal
             let r = 10.0 * (scale[0].powf(2.0) + scale[1].powf(2.0)).sqrt();
             let start = ellipse::circle(sx, sy, r);
             let goal = ellipse::circle(gx, gy, r);
             ellipse(color::RED, start, c.transform, gl);
             ellipse(color::RED, goal, c.transform, gl);
-
-            // Render path
-            let mut lp = [sx, sy];
-            for next_pose in &self.planner.path {
-                let np = math::mul([next_pose.x as f64, next_pose.y as f64], scale);
-                line_from_to(
-                    color::GREEN,
-                    1.0,
-                    [lp[0], lp[1]],
-                    [np[0], np[1]],
-                    c.transform,
-                    gl,
-                );
-                lp = np;
-            }
 
             // Render actor
             let [acx, acy] = math::mul(
@@ -87,13 +104,18 @@ impl App {
             let transform = c
                 .transform
                 .trans(acx, acy)
-                .rot_deg(self.planner.pose.t as f64);
-            let r = rectangle::rectangle_by_corners(asx / -2.0, asy / -2.0, asx, asy);
+                .rot_deg(self.planner.pose.t as f64)
+                .trans(asx / -2.0, asy / -2.0);
+            let r = rectangle::rectangle_by_corners(0.0, 0.0, asx, asy);
             rectangle(color::BLUE, r, transform, gl);
         });
     }
 
     fn update(&mut self, args: &UpdateArgs) {
+        if !self.planner.compute_path(&self.playground) {
+            // Don't start the animation until we have computed the path.
+            return;
+        }
         self.t += args.dt;
         self.planner.update_pos(self.t);
     }
@@ -108,16 +130,32 @@ fn main() {
         .build()
         .unwrap();
 
-    let start = (50, 50);
-    let goal = (750, 50);
-    let playground = Playground::new((initial_size.0 as i32, initial_size.1 as i32), start, goal);
+    let playground = setup_playground(initial_size);
     let planner = Planner::new(&playground);
     let mut app = App {
         gl: GlGraphics::new(opengl_version),
         playground,
         planner,
-        t: 0.0,
+        t: -1.0,
     };
+
+    let mut events = Events::new(EventSettings::new());
+    while let Some(e) = events.next(&mut window) {
+        if let Some(args) = e.render_args() {
+            app.render(&args);
+        }
+
+        if let Some(args) = e.update_args() {
+            app.update(&args);
+        }
+    }
+}
+
+fn setup_playground(initial_size: (u32, u32)) -> Playground {
+    let start = (50, 50);
+    let goal = (750, 50);
+    let mut playground =
+        Playground::new((initial_size.0 as i32, initial_size.1 as i32), start, goal);
 
     let obstacles = [
         // vertical barrier 1
@@ -126,7 +164,7 @@ fn main() {
             size: (100, 650),
         },
         Rect {
-            anchor: (200, 750),
+            anchor: (200, 700),
             size: (100, 100),
         },
         // vertical barrier 2
@@ -146,7 +184,7 @@ fn main() {
         // horizontal barrier 1
         Rect {
             anchor: (300, 500),
-            size: (350, 100),
+            size: (400, 100),
         },
         Rect {
             anchor: (750, 500),
@@ -163,19 +201,8 @@ fn main() {
         },
     ];
     for o in obstacles {
-        app.playground.add_obstacles(o);
+        playground.add_obstacles(o);
     }
 
-    app.planner.compute_path(&app.playground);
-
-    let mut events = Events::new(EventSettings::new());
-    while let Some(e) = events.next(&mut window) {
-        if let Some(args) = e.render_args() {
-            app.render(&args);
-        }
-
-        if let Some(args) = e.update_args() {
-            app.update(&args);
-        }
-    }
+    return playground;
 }

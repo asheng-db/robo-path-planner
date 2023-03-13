@@ -19,35 +19,39 @@ pub struct Pose {
 pub struct Planner {
     pub pose: Pose,
     pub size: (i32, i32),
-    pub path: Vec<Pose>,
+    pub full_path: Vec<Pose>,
+    pub compact_path: Vec<Pose>,
     splines: Option<(Spline<f64, f64>, Spline<f64, f64>, Spline<f64, f64>)>,
 }
 
 impl Planner {
     pub fn new(playground: &Playground) -> Self {
+        const SIZE: (i32, i32) = (10, 50);
         return Self {
             pose: Pose {
                 x: playground.start.0,
                 y: playground.start.1,
                 t: 0,
             },
-            size: (15, 30),
-            path: vec![],
+            size: SIZE,
+            full_path: vec![],
+            compact_path: vec![],
             splines: None,
         };
     }
 
-    pub fn compute_path(&mut self, playground: &Playground) {
+    pub fn compute_path(&mut self, playground: &Playground) -> bool {
         if self.splines.is_none() {
-            let path = self.rrt_to_goal(playground);
-            let path = self.compact_path(playground, &path);
-            self.splines = Some(Self::build_spline(&path));
-            self.path = path;
+            self.full_path = self.rrt_to_goal(playground);
+            self.compact_path = self.compact_path(playground, &self.full_path);
+            self.splines = Some(Self::build_spline(&self.compact_path));
+            return false;
         }
+        return true;
     }
 
     pub fn update_pos(&mut self, t: f64) {
-        const PIXELS_PER_SEC: f64 = 24.0;
+        const PIXELS_PER_SEC: f64 = 25.0;
         let t = t * PIXELS_PER_SEC;
         match &self.splines {
             None => (),
@@ -122,7 +126,8 @@ impl Planner {
                 false => Pose {
                     x: rng.gen_range(0..playground.size.0 / GRID_SIZE) * GRID_SIZE,
                     y: rng.gen_range(0..playground.size.1 / GRID_SIZE) * GRID_SIZE,
-                    t: rng.gen_range(0..36) * GRID_SIZE,
+                    // Only rotate around half the circle to avoid interpolation issues.
+                    t: rng.gen_range(0..180 / GRID_SIZE) * GRID_SIZE,
                 },
             };
             if visited_to_parent.contains_key(&rpose) || !self.is_valid_pose(playground, &rpose) {
@@ -324,7 +329,8 @@ mod tests {
         let actor = Planner {
             pose: Pose { x: 0, y: 0, t: 0 },
             size: (40, 40),
-            path: vec![],
+            full_path: vec![],
+            compact_path: vec![],
             splines: None,
         };
         assert!(actor.is_valid_path(
@@ -366,7 +372,8 @@ mod tests {
         let actor = Planner {
             pose: Pose { x: 0, y: 0, t: 0 },
             size: (1, 128),
-            path: vec![],
+            full_path: vec![],
+            compact_path: vec![],
             splines: None,
         };
 
