@@ -11,7 +11,8 @@ This repo was inspired by the desire to kill two birds with one stone:
 
 ## Description
 This is a 2d simulation of [robot motion planning](https://en.wikipedia.org/wiki/Motion_planning).
-It is a modernized version of an old student project.
+While it was inspired by an old student project, I unfortunately lost the code for my original work,
+so I decided to try out a different pathfinding approach this time around.
 
 The simulation contains:
 
